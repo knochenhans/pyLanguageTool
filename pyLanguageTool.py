@@ -6,17 +6,28 @@ import tempfile
 from pathlib import Path
 
 import aspose.words as aw
+
+# import debugpy
 import language_tool_python
 from colorama import Fore, Style
 from docx import Document, table
 from docx.shared import Cm
-from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QFont, QTextCharFormat, QTextCursor, QTextDocument
+from PySide6.QtCore import QSettings, Qt, QThread, Signal
+from PySide6.QtGui import (
+    QAction,
+    QFont,
+    QTextCharFormat,
+    QTextCursor,
+    QTextDocument,
+    QColor,
+    QTextBlock,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QMainWindow,
     QSplitter,
+    QStyle,
     QTextEdit,
 )
 
@@ -43,10 +54,11 @@ class TextDisplay(QTextEdit):
 
     def mouseReleaseEvent(self, e):
         # if self.anchor:
-            # QDesktopServices.openUrl(QUrl(self.anchor))
-            # QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
-            # self.anchor = None
+        # QDesktopServices.openUrl(QUrl(self.anchor))
+        # QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
+        # self.anchor = None
         pass
+
 
 class TextEditor(QMainWindow):
     def __init__(self):
@@ -71,6 +83,11 @@ class TextEditor(QMainWindow):
         self.splitter.addWidget(self.errorDisplay)
 
         openAction = QAction("Open", self)
+        openAction.setShortcut("Ctrl+O")
+        openAction.setStatusTip("Open File")
+        openAction.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
+        )
         openAction.triggered.connect(self.openFile)
 
         exitAction = QAction("Exit", self)
@@ -96,8 +113,16 @@ class TextEditor(QMainWindow):
 
         self.setWindowTitle("pyLanguageTool")
 
+        self.statusBar()
+
+        # Add an icon bar
+        self.toolbar = self.addToolBar("Toolbar")
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
+        self.toolbar.addAction(openAction)
+
         # Maximize the window
-        self.showMaximized()
+        # self.showMaximized()
+        self.resize(1200, 800)
 
         self.loadWindowPosition()
 
@@ -150,8 +175,10 @@ class TextEditor(QMainWindow):
                 )
         return extracted_columns
 
-    def printError(self, error: dict):
-        cursor = QTextCursor(self.errorDisplay.document())
+    def printError(self, cursor: QTextCursor, error: dict):
+        # Get color based on error type
+        error_type = error["Error"].split(" - ")[0]
+        color = QColor(self.error_type_color_map.get(error_type, Qt.GlobalColor.black))
 
         for field_name, field_value in error.items():
             if field_name == "Offset" or field_name == "Length":
@@ -160,76 +187,51 @@ class TextEditor(QMainWindow):
             if field_name == "Replacements" and field_value != [" "]:
                 continue
 
+            block_format = cursor.blockFormat()
+            # block_format.setTopMargin(10)
+            block_format.setBackground(color.lighter(190))
+            # block_format.setForeground(Qt.GlobalColor.black)
+
+            cursor.setBlockFormat(block_format)
+            cursor.insertBlock()
             format = QTextCharFormat()
 
-            format.setForeground(Qt.GlobalColor.red)
+            format.setForeground(Qt.GlobalColor.black)
             format.setFontWeight(QFont.Weight.Bold)
+
             cursor.insertText(f"{field_name}: ", format)
 
-            format = QTextCharFormat()
+            format.setFontWeight(QFont.Weight.Normal)
+            # format = QTextCharFormat()
+            # format.setForeground(Qt.GlobalColor.black)
 
             cursor.insertText(f"{field_value}\n", format)
 
+    def handleFileLoaded(self, text: str):
+        cursor = QTextCursor(self.errorDisplay.document())
+
+        for error in self.errors.values():
+            self.printError(cursor, error)
+
+        block_format = cursor.blockFormat()
+        block_format.setBackground(QColor(Qt.GlobalColor.white))
+        cursor.insertBlock()
         cursor.insertText("\n")
+
+        formatted_text = self.formatText(text)
+        self.textDisplay.setDocument(formatted_text)
+
+        self.addRecentFile(self.fileLoaderWorker.file_name)
+        self.statusBar().showMessage("File loaded")
 
     def openFile(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
-            with open(file_name, "r") as file:
-                if (
-                    file_name.endswith(".docx")
-                    or file_name.endswith(".doc")
-                    or file_name.endswith(".rtf")
-                ):
-                    file_path = None
+            self.fileLoaderWorker = FileLoaderWorker(self, file_name)
+            self.fileLoaderWorker.fileLoaded.connect(self.handleFileLoaded)
+            self.fileLoaderWorker.start()
 
-                    if file_name.endswith(".rtf"):
-                        # Load file as bytesio
-                        with open(file_name, "rb") as f:
-                            data = f.read()
-
-                        stream = io.BytesIO(data)
-                        doc = aw.Document(stream)
-
-                        # Save as docx
-                        stream = io.BytesIO()
-                        doc.save(stream, aw.SaveFormat.DOCX)
-                        stream.seek(0)
-
-                        file_path = stream
-
-                    elif file_name.endswith(".docx") or file_name.endswith(".doc"):
-                        file_path = file_name
-
-                    tables = self.read_docx_tables(file_path)
-
-                    for table in tables:
-                        _, _, target1 = self.extract_table_columns(table, [0, 1, 2])
-
-                        text = "\n".join(target1)
-                else:
-                    text = file.read()
-
-                matches = self.language_tool.check(text)
-                for match in matches:
-                    error_type = f"{match.ruleIssueType} - {match.category}"
-                    error = {
-                        "Error": error_type,
-                        "Message": match.message,
-                        "Replacements": match.replacements,
-                        "Context": match.context,
-                        "Sentence": match.sentence,
-                        "Offset": match.offset,
-                        "Length": match.errorLength,
-                    }
-                    self.errors[match.offset] = error
-                    self.printError(error)
-
-                formatted_text = self.format(text)
-                self.textDisplay.setDocument(formatted_text)
-            self.addRecentFile(file_name)
-
-    def format(self, text):
+    def formatText(self, text):
         document = QTextDocument()
         cursor = QTextCursor(document)
 
@@ -259,7 +261,7 @@ class TextEditor(QMainWindow):
                     QTextCharFormat.UnderlineStyle.SpellCheckUnderline
                 )
                 format.setToolTip(
-                    f"Error: {error['Error']}\nMessage: {error['Message']}\nReplacements: {error['Replacements']}\nContext: {error['Context']}\nSentence: {error['Sentence']}"
+                    f"{error['Error']}\n{error['Message']}\n→ {error['Replacements']}\nContext: {error['Context']}\n{error['Sentence']}"
                 )
                 format.setAnchor(True)
                 format.setAnchorHref(f"#{offset}")
@@ -305,6 +307,77 @@ class TextEditor(QMainWindow):
         size = settings.value("window/size", self.size())
         self.move(pos)
         self.resize(size)
+
+
+class FileLoaderWorker(QThread):
+    fileLoaded = Signal(str)
+
+    def __init__(self, text_editor: TextEditor, file_name: str):
+        super().__init__()
+        self.text_editor = text_editor
+        self.file_name = file_name
+
+    def run(self):
+        # debugpy.debug_this_thread()
+        self.text_editor.statusBar().showMessage(f"Loading {self.file_name}...")
+        with open(self.file_name, "r") as file:
+            if (
+                self.file_name.endswith(".docx")
+                or self.file_name.endswith(".doc")
+                or self.file_name.endswith(".rtf")
+            ):
+                file_path = None
+
+                if self.file_name.endswith(".rtf"):
+                    # Load file as bytesio
+                    with open(self.file_name, "rb") as f:
+                        data = f.read()
+
+                    stream = io.BytesIO(data)
+                    doc = aw.Document(stream)
+
+                    # Save as docx
+                    stream = io.BytesIO()
+                    doc.save(stream, aw.SaveFormat.DOCX)
+                    stream.seek(0)
+
+                    file_path = stream
+
+                elif self.file_name.endswith(".docx") or self.file_name.endswith(
+                    ".doc"
+                ):
+                    file_path = self.file_name
+
+                tables = self.text_editor.read_docx_tables(file_path)
+
+                for table in tables:
+                    _, _, target1 = self.text_editor.extract_table_columns(
+                        table, [0, 1, 2]
+                    )
+
+                    text = "\n".join(target1)
+            else:
+                text = file.read()
+
+            self.text_editor.statusBar().showMessage(
+                f"Checking {self.file_name} with LanguageTool..."
+            )
+            matches = self.text_editor.language_tool.check(text)
+            for match in matches:
+                print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
+                error_type = f"{match.ruleIssueType} - {match.category}"
+                error = {
+                    "Error": error_type,
+                    "Message": match.message,
+                    "Replacements": match.replacements,
+                    "Context": match.context,
+                    "Sentence": match.sentence,
+                    "Offset": match.offset,
+                    "Length": match.errorLength,
+                }
+                self.text_editor.errors[match.offset] = error
+
+        self.fileLoaded.emit(text)
 
 
 if __name__ == "__main__":
