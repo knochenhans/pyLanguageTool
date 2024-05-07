@@ -1,7 +1,11 @@
+import io
 import os
 import re
 import sys
+import tempfile
+from pathlib import Path
 
+import aspose.words as aw
 import language_tool_python
 from colorama import Fore, Style
 from docx import Document, table
@@ -17,6 +21,33 @@ from PySide6.QtWidgets import (
 )
 
 
+class TextDisplay(QTextEdit):
+    def __init__(self):
+        super().__init__()
+
+    def mouseMoveEvent(self, e):
+        self.anchor = self.anchorAt(e.position().toPoint())
+        if self.anchor:
+            QApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
+
+    def mousePressEvent(self, e):
+        self.anchor = self.anchorAt(e.position().toPoint())
+
+        if self.anchor:
+            print(f"Anchor: {self.anchor}")
+
+        # if self.anchor:
+        #     QApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mouseReleaseEvent(self, e):
+        # if self.anchor:
+            # QDesktopServices.openUrl(QUrl(self.anchor))
+            # QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
+            # self.anchor = None
+        pass
+
 class TextEditor(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -28,7 +59,7 @@ class TextEditor(QMainWindow):
         self.splitter.setOrientation(Qt.Orientation.Horizontal)
         self.setCentralWidget(self.splitter)
 
-        self.textDisplay = QTextEdit()
+        self.textDisplay = TextDisplay()
         self.textDisplay.setAcceptRichText(True)
         self.textDisplay.setReadOnly(True)
         self.textDisplay.setStyleSheet("background-color: white;" "color: black;")
@@ -74,6 +105,14 @@ class TextEditor(QMainWindow):
 
         self.language_tool = language_tool_python.LanguageTool("de-DE")
 
+        self.errors: dict = {}
+
+        self.error_type_color_map = {
+            "uncategorized": Qt.GlobalColor.gray,
+            "misspelling": Qt.GlobalColor.red,
+            "style": Qt.GlobalColor.blue,
+        }
+
     def closeEvent(self, event):
         self.saveWindowPosition()
 
@@ -87,6 +126,7 @@ class TextEditor(QMainWindow):
         """
         document = Document(file_path)
         tables = document.tables
+
         return tables
 
     def extract_table_columns(self, table, columns, num_rows=-1):
@@ -102,28 +142,20 @@ class TextEditor(QMainWindow):
             if num_rows > -1 and i >= num_rows:
                 break
             for j, col in enumerate(columns):
-                extracted_columns[j].append(row.cells[col].text.strip())
+                if col < len(row.cells):
+                    extracted_columns[j].append(row.cells[col].text.strip())
             if i % 100 == 0:
                 print(
                     f"{Fore.GREEN}Current row number: {i}, First column: {Fore.BLUE}{extracted_columns[0][-1]}{Style.RESET_ALL}"
                 )
         return extracted_columns
 
-    def addError(self, match: language_tool_python.Match):
+    def printError(self, error: dict):
         cursor = QTextCursor(self.errorDisplay.document())
 
-        error_type = f"{match.ruleIssueType} - {match.category}"
-
-        fields = {
-            "Error": error_type,
-            "Message": match.message,
-            "Replacements": match.replacements,
-            "Context": match.context,
-            "Sentence": match.sentence,
-            # "Rule ID": match.ruleId,
-        }
-
-        for field_name, field_value in fields.items():
+        for field_name, field_value in error.items():
+            if field_name == "Offset" or field_name == "Length":
+                continue
             # Ignore replacements if there are none
             if field_name == "Replacements" and field_value != [" "]:
                 continue
@@ -141,33 +173,63 @@ class TextEditor(QMainWindow):
         cursor.insertText("\n")
 
     def openFile(self):
-        fileName, _ = QFileDialog.getOpenFileName(self, "Open File")
-        if fileName:
-            offset_lengths = []
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
+        if file_name:
+            with open(file_name, "r") as file:
+                if (
+                    file_name.endswith(".docx")
+                    or file_name.endswith(".doc")
+                    or file_name.endswith(".rtf")
+                ):
+                    file_path = None
 
-            with open(fileName, "r") as file:
-                if fileName.endswith(".docx") or fileName.endswith(".doc"):
-                    table1 = self.read_docx_tables(fileName)
-                    num_rows = len(table1[0].rows)
+                    if file_name.endswith(".rtf"):
+                        # Load file as bytesio
+                        with open(file_name, "rb") as f:
+                            data = f.read()
 
-                    id1, source1, target1 = self.extract_table_columns(
-                        table1, [0, 1, 2]
-                    )
+                        stream = io.BytesIO(data)
+                        doc = aw.Document(stream)
 
-                    text = "\n".join(target1)
+                        # Save as docx
+                        stream = io.BytesIO()
+                        doc.save(stream, aw.SaveFormat.DOCX)
+                        stream.seek(0)
+
+                        file_path = stream
+
+                    elif file_name.endswith(".docx") or file_name.endswith(".doc"):
+                        file_path = file_name
+
+                    tables = self.read_docx_tables(file_path)
+
+                    for table in tables:
+                        _, _, target1 = self.extract_table_columns(table, [0, 1, 2])
+
+                        text = "\n".join(target1)
                 else:
                     text = file.read()
 
                 matches = self.language_tool.check(text)
                 for match in matches:
-                    offset_lengths.append((match.offset, match.errorLength))
-                    self.addError(match)
+                    error_type = f"{match.ruleIssueType} - {match.category}"
+                    error = {
+                        "Error": error_type,
+                        "Message": match.message,
+                        "Replacements": match.replacements,
+                        "Context": match.context,
+                        "Sentence": match.sentence,
+                        "Offset": match.offset,
+                        "Length": match.errorLength,
+                    }
+                    self.errors[match.offset] = error
+                    self.printError(error)
 
-                formatted_text = self.format(text, offset_lengths)
+                formatted_text = self.format(text)
                 self.textDisplay.setDocument(formatted_text)
-            self.addRecentFile(fileName)
+            self.addRecentFile(file_name)
 
-    def format(self, text, offset_lengths=None):
+    def format(self, text):
         document = QTextDocument()
         cursor = QTextCursor(document)
 
@@ -176,32 +238,38 @@ class TextEditor(QMainWindow):
 
         format = QTextCharFormat()
 
+        # Get a list of all keys (offsets) in the errors dictionary
+        keys = list(self.errors.keys())
+
+        current_error = None
+
         # Loop through the text and add formatting based on the offset and length
         for character in text:
+            offset = cursor.position()
+            if offset in keys:
+                error = self.errors[offset]
+                format.setFontUnderline(True)
 
-            if offset_lengths:
-                for offset, length in offset_lengths:
-                    if cursor.position() == offset:
-                        format.setFontUnderline(True)
-                        format.setUnderlineColor(Qt.GlobalColor.blue)
-                        format.setUnderlineStyle(
-                            QTextCharFormat.UnderlineStyle.SpellCheckUnderline
-                        )
-                    if cursor.position() == offset + length:
-                        format = QTextCharFormat()
+                error_type = error["Error"].split(" - ")[0]
+
+                format.setUnderlineColor(
+                    self.error_type_color_map.get(error_type, Qt.GlobalColor.black)
+                )
+                format.setUnderlineStyle(
+                    QTextCharFormat.UnderlineStyle.SpellCheckUnderline
+                )
+                format.setToolTip(
+                    f"Error: {error['Error']}\nMessage: {error['Message']}\nReplacements: {error['Replacements']}\nContext: {error['Context']}\nSentence: {error['Sentence']}"
+                )
+                format.setAnchor(True)
+                format.setAnchorHref(f"#{offset}")
+                current_error = error
+            elif current_error:
+                if offset == error["Offset"] + error["Length"]:
+                    format = QTextCharFormat()
+                    current_error = None
 
             cursor.insertText(character, format)
-
-        # lines = text.splitlines()
-        # for line in lines:
-        #     words = re.split(r"(\W+)", line)
-        #     for word in words:
-        #         format = QTextCharFormat()
-        #         if import_keyword in word:
-        #             format.setForeground(Qt.GlobalColor.red)
-        #             format.setFontWeight(QFont.Weight.Bold)
-        #         cursor.insertText(word, format)
-        #     cursor.insertBlock()
         return document
 
     def addRecentFile(self, fileName):
