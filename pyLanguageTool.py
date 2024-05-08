@@ -363,6 +363,7 @@ class FileLoaderWorker(QThread):
                 f"Checking {self.file_name} with LanguageTool..."
             )
             matches = self.text_editor.language_tool.check(text)
+            self.text_editor.language_tool.close()
             for match in matches:
                 print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
                 error_type = f"{match.ruleIssueType} - {match.category}"
