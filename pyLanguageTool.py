@@ -15,12 +15,12 @@ from docx.shared import Cm
 from PySide6.QtCore import QSettings, Qt, QThread, Signal
 from PySide6.QtGui import (
     QAction,
+    QColor,
     QFont,
+    QTextBlock,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
-    QColor,
-    QTextBlock,
 )
 from PySide6.QtWidgets import (
     QApplication,
