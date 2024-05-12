@@ -172,7 +172,7 @@ class TextEditor(QMainWindow):
                     extracted_columns[j].append(row.cells[col].text.strip())
             if i % 100 == 0:
                 print(
-                    f"{Fore.GREEN}Current row number: {i}, First column: {Fore.BLUE}{extracted_columns[0][-1]}{Style.RESET_ALL}"
+                    f"{Fore.GREEN}Current row number: {i} of {len(table.rows)}{Style.RESET_ALL}, First column: {Fore.BLUE}{extracted_columns[0][-1]}{Style.RESET_ALL}"
                 )
         return extracted_columns
 
