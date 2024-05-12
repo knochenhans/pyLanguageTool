@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStyle,
     QTextEdit,
+    QInputDialog,
 )
 
 
@@ -350,12 +351,35 @@ class FileLoaderWorker(QThread):
 
                 tables = self.text_editor.read_docx_tables(file_path)
 
-                for table in tables:
-                    _, _, target1 = self.text_editor.extract_table_columns(
-                        table, [0, 1, 2]
-                    )
+                text = ""
 
-                    text = "\n".join(target1)
+                table_names = [f"Table {i+1}" for i in range(len(tables))]
+
+                # Display a message box to select the table that should be checked
+                table_name = self.select_table(table_names, tables)
+
+                # Display a message box to select the column that should be checked
+
+                column_names = [
+                    f"Column {i+1}" for i in range(len(tables[0].rows[0].cells))
+                ]
+                
+                column_name = self.select_column(column_names)
+
+                table_index = table_names.index(table_name)
+                table = tables[table_index]
+
+                column_index = column_names.index(column_name)
+
+                target1 = self.text_editor.extract_table_columns(table, [column_index])[
+                    0
+                ]
+
+                # _, _, target1 = self.text_editor.extract_table_columns(
+                #     table, [0, 1, 2]
+                # )
+
+                text = "\n".join(target1)
             else:
                 text = file.read()
 
@@ -379,6 +403,35 @@ class FileLoaderWorker(QThread):
                 self.text_editor.errors[match.offset] = error
 
         self.fileLoaded.emit(text)
+
+    def select_column(self, column_names):
+        column_name, ok = QInputDialog.getItem(
+                    self.text_editor,
+                    "Select Column",
+                    "Select the column to check:",
+                    column_names,
+                    0,
+                    False,
+                )
+        
+        return column_name
+
+    def select_table(self, table_names, tables):
+        if len(tables) > 1:
+            table_name, ok = QInputDialog.getItem(
+                self.text_editor,
+                "Select Table",
+                "Select the table to check:",
+                table_names,
+                0,
+                False,
+            )
+            if not ok:
+                table_name = table_names[0]
+        else:
+            table_name = table_names[0]
+
+        return table_name
 
 
 if __name__ == "__main__":
