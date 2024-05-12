@@ -133,7 +133,7 @@ class TextEditor(QMainWindow):
         self.errors: dict = {}
 
         self.error_type_color_map = {
-            "uncategorized": Qt.GlobalColor.gray,
+            "uncategorized": Qt.GlobalColor.magenta,
             "misspelling": Qt.GlobalColor.red,
             "style": Qt.GlobalColor.blue,
         }
@@ -178,7 +178,7 @@ class TextEditor(QMainWindow):
     def printError(self, cursor: QTextCursor, error: dict):
         # Get color based on error type
         error_type = error["Error"].split(" - ")[0]
-        color = QColor(self.error_type_color_map.get(error_type, Qt.GlobalColor.black))
+        color = QColor(self.error_type_color_map.get(error_type, Qt.GlobalColor.yellow))
 
         for field_name, field_value in error.items():
             if field_name == "Offset" or field_name == "Length":
