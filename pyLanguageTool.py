@@ -302,16 +302,18 @@ class TextEditor(QMainWindow):
             cursor.insertText(character, format)
         return document
 
-    def addRecentFile(self, fileName):
-        if fileName in self.recentFiles:
-            self.recentFiles.remove(fileName)
-        self.recentFiles.insert(0, fileName)
+    def addRecentFile(self, file_name):
+        if file_name in self.recentFiles:
+            self.recentFiles.remove(file_name)
+        self.recentFiles.insert(0, file_name)
         self.updateRecentFilesMenu()
 
-    def openRecentFile(self, fileName):
-        with open(fileName, "r") as file:
-            self.textDisplay.setText(file.read())
-        self.addRecentFile(fileName)
+    def openRecentFile(self, file_name):
+        if file_name:
+            self.fileLoaderWorker = FileLoaderWorker(self, file_name)
+            self.fileLoaderWorker.fileLoaded.connect(self.fileLoaded)
+            self.fileLoaderWorker.start()
+        self.addRecentFile(file_name)
 
     def updateRecentFilesMenu(self):
         self.recentMenu.clear()
