@@ -95,6 +95,15 @@ class TextEditor(QMainWindow):
         self.errorDisplay.setReadOnly(True)
         self.splitter.addWidget(self.errorDisplay)
 
+        self.errorDisplay.setText("Errors will be displayed here.")
+
+        cursor = QTextCursor(self.errorDisplay.document())
+        cursor.setPosition(0)
+        cursor.insertHtml("<b>")
+        # cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 5)
+        cursor.setPosition(5)
+        cursor.insertHtml("</b>")
+
         openAction = QAction("Open", self)
         openAction.setShortcut("Ctrl+O")
         openAction.setStatusTip("Open File")
@@ -235,7 +244,7 @@ class TextEditor(QMainWindow):
 
             cursor.insertText(f"{field_value}\n", format)
 
-    def handleFileLoaded(self, text: str):
+    def fileLoaded(self, text: str):
         cursor = QTextCursor(self.errorDisplay.document())
 
         for error in self.errors.values():
@@ -256,7 +265,7 @@ class TextEditor(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
             self.fileLoaderWorker = FileLoaderWorker(self, file_name)
-            self.fileLoaderWorker.fileLoaded.connect(self.handleFileLoaded)
+            self.fileLoaderWorker.fileLoaded.connect(self.fileLoaded)
             self.fileLoaderWorker.start()
 
     def formatText(self, text):
@@ -400,19 +409,20 @@ class FileLoaderWorker(QThread):
 
         self.fileLoaded.emit(text)
 
-    def select_column(self, column_names):
+    def select_column(self, column_names) -> int:
         column_name, ok = QInputDialog.getItem(
-                    self.text_editor,
-                    "Select Column",
-                    "Select the column to check:",
-                    column_names,
-                    0,
-                    False,
-                )
-        
-        return column_name
+            self.text_editor,
+            "Select Column",
+            "Select the column to check:",
+            column_names,
+            0,
+            False,
+        )
 
-    def select_table(self, table_names, tables):
+        column_index = column_names.index(column_name)
+        return column_index
+
+    def select_table(self, table_names, tables) -> int:
         if len(tables) > 1:
             table_name, ok = QInputDialog.getItem(
                 self.text_editor,
@@ -427,7 +437,9 @@ class FileLoaderWorker(QThread):
         else:
             table_name = table_names[0]
 
-        return table_name
+        table_index = table_names.index(table_name) + 1
+        return table_index
+
     def checkSegment(self, segment: str):
         matches = self.text_editor.language_tool.check(segment)
         for match in matches:
