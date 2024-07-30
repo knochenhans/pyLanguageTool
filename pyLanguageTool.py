@@ -30,7 +30,19 @@ from PySide6.QtWidgets import (
     QStyle,
     QTextEdit,
     QInputDialog,
+    QComboBox,
 )
+
+template_smartcat = {
+    "name": "Smartcat",
+    "row": 0,
+    "source_col_index": 1,
+    "target_col_index": 2,
+}
+
+templates = [template_smartcat]
+
+current_template = template_smartcat
 
 
 class TextDisplay(QTextEdit):
@@ -121,6 +133,12 @@ class TextEditor(QMainWindow):
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
         self.toolbar.addAction(openAction)
 
+        # Add template dropdown
+        self.templateComboBox = QComboBox()
+        self.templateComboBox.addItems([template["name"] for template in templates])
+        self.templateComboBox.currentIndexChanged.connect(self.templateChanged)
+        self.toolbar.addWidget(self.templateComboBox)
+
         # Maximize the window
         # self.showMaximized()
         self.resize(1200, 800)
@@ -138,6 +156,15 @@ class TextEditor(QMainWindow):
             "misspelling": Qt.GlobalColor.red,
             "style": Qt.GlobalColor.blue,
         }
+
+    def templateChanged(self, index):
+        template_name = self.templateComboBox.currentText()
+        template = next(
+            (template for template in templates if template["name"] == template_name),
+            None,
+        )
+        if template:
+            current_template = template
 
     def closeEvent(self, event):
         self.saveWindowPosition()
@@ -353,31 +380,12 @@ class FileLoaderWorker(QThread):
 
                 text = ""
 
-                table_names = [f"Table {i+1}" for i in range(len(tables))]
-
-                # Display a message box to select the table that should be checked
-                table_name = self.select_table(table_names, tables)
-
-                # Display a message box to select the column that should be checked
-
-                column_names = [
-                    f"Column {i+1}" for i in range(len(tables[0].rows[0].cells))
-                ]
-                
-                column_name = self.select_column(column_names)
-
-                table_index = table_names.index(table_name)
-                table = tables[table_index]
-
-                column_index = column_names.index(column_name)
+                table = tables[current_template["row"]]
+                column_index = current_template["target_col_index"]
 
                 target1 = self.text_editor.extract_table_columns(table, [column_index])[
                     0
                 ]
-
-                # _, _, target1 = self.text_editor.extract_table_columns(
-                #     table, [0, 1, 2]
-                # )
 
                 text = "\n".join(target1)
             else:
