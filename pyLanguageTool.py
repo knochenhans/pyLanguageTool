@@ -396,21 +396,7 @@ class FileLoaderWorker(QThread):
             self.text_editor.statusBar().showMessage(
                 f"Checking {self.file_name} with LanguageTool..."
             )
-            matches = self.text_editor.language_tool.check(text)
-            self.text_editor.language_tool.close()
-            for match in matches:
-                print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
-                error_type = f"{match.ruleIssueType} - {match.category}"
-                error = {
-                    "Error": error_type,
-                    "Message": match.message,
-                    "Replacements": match.replacements,
-                    "Context": match.context,
-                    "Sentence": match.sentence,
-                    "Offset": match.offset,
-                    "Length": match.errorLength,
-                }
-                self.text_editor.errors[match.offset] = error
+            self.checkSegment(text)
 
         self.fileLoaded.emit(text)
 
@@ -442,6 +428,21 @@ class FileLoaderWorker(QThread):
             table_name = table_names[0]
 
         return table_name
+    def checkSegment(self, segment: str):
+        matches = self.text_editor.language_tool.check(segment)
+        for match in matches:
+            print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
+            error_type = f"{match.ruleIssueType} - {match.category}"
+            error = {
+                "Error": error_type,
+                "Message": match.message,
+                "Replacements": match.replacements,
+                "Context": match.context,
+                "Sentence": match.sentence,
+                "Offset": match.offset,
+                "Length": match.errorLength,
+            }
+            self.text_editor.errors[match.offset] = error
 
 
 if __name__ == "__main__":
