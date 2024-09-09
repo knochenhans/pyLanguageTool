@@ -33,16 +33,33 @@ from PySide6.QtWidgets import (
     QComboBox,
 )
 
-template_smartcat = {
-    "name": "Smartcat",
-    "row": 0,
-    "source_col_index": 1,
-    "target_col_index": 2,
-}
-
-templates = [template_smartcat]
-
-current_template = template_smartcat
+templates = [
+    {
+        "name": "Smartcat",
+        "simple": False,
+        "row": 0,
+        "source_col_index": 1,
+        "target_col_index": 2,
+    },
+    {
+        "name": "MemoQ",
+        "simple": False,
+        "row": 0,
+        "source_col_index": 1,
+        "target_col_index": 2,
+    },
+    {
+        "name": "Memsouce",
+        "simple": False,
+        "row": 0,
+        "source_col_index": 3,
+        "target_col_index": 4,
+    },
+    {
+        "name": "Target General",
+        "simple": True,
+    },
+]
 
 
 class TextDisplay(QTextEdit):
@@ -170,7 +187,7 @@ class TextEditor(QMainWindow):
             None,
         )
         if template:
-            current_template = template
+            self.current_template = template
 
     def closeEvent(self, event):
         self.saveWindowPosition()
