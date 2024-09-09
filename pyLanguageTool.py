@@ -160,6 +160,8 @@ class TextEditor(QMainWindow):
         preferencesAction.triggered.connect(self.openPreferences)
 
         fileMenu.addAction(preferencesAction)
+        fileMenu.addSeparator()
+        fileMenu.addAction(exitAction)
 
         self.setWindowTitle("pyLanguageTool")
 
