@@ -124,14 +124,11 @@ class TextEditor(QMainWindow):
 
         # Load recent files from QSettings
         recentFiles = QSettings().value("recentFiles", [])
+        
+        preferencesAction = QAction("Preferences", self)
+        preferencesAction.triggered.connect(self.openPreferences)
 
-        # Check if this is a list of strings or a single string
-        if isinstance(recentFiles, str):
-            recentFiles = [recentFiles]
-
-        self.recentFiles = recentFiles
-        self.recentMenu = fileMenu.addMenu("Recent Files")
-        self.updateRecentFilesMenu()
+        fileMenu.addAction(preferencesAction)
 
         self.setWindowTitle("pyLanguageTool")
 
@@ -160,11 +157,11 @@ class TextEditor(QMainWindow):
 
         self.errors: dict = {}
 
-        self.error_type_color_map = {
-            "uncategorized": Qt.GlobalColor.magenta,
-            "misspelling": Qt.GlobalColor.red,
-            "style": Qt.GlobalColor.blue,
-        }
+        self.current_template = templates[0]
+
+    def openPreferences(self):
+        preferencesWindow = PreferencesWindow(self)
+        preferencesWindow.exec()
 
     def templateChanged(self, index):
         template_name = self.templateComboBox.currentText()
@@ -455,6 +452,39 @@ class FileLoaderWorker(QThread):
                 "Length": match.errorLength,
             }
             self.text_editor.errors[match.offset] = error
+
+
+class PreferencesWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preferences")
+        self.layout = QVBoxLayout()
+
+        self.errorColors = {}
+
+        for error_type, color in error_type_color_map.items():
+            label = QLabel(f"{error_type}:")
+            self.layout.addWidget(label)
+
+            colorButton = QPushButton()
+            colorButton.setStyleSheet(f"background-color: {color.name}")
+            colorButton.clicked.connect(
+                lambda _, error_type=error_type: self.setColor(error_type)
+            )
+            self.layout.addWidget(colorButton)
+
+            self.errorColors[error_type] = colorButton
+
+        self.setLayout(self.layout)
+        self.setMinimumWidth(300)  # Set minimum width for the dialog
+
+    def setColor(self, error_type):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.errorColors[error_type].setStyleSheet(
+                f"background-color: {color.name}"
+            )
+            error_type_color_map[error_type] = color
 
 
 if __name__ == "__main__":
