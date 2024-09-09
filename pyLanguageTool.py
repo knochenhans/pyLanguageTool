@@ -8,11 +8,11 @@ from collections import defaultdict
 from pathlib import Path
 
 import aspose.words as aw
-
-# import debugpy
+import debugpy
 import language_tool_python
 from colorama import Fore, Style
 from docx import Document, table
+from docx2python import docx2python
 from docx.shared import Cm
 from PySide6.QtCore import QSettings, Qt, QThread, Signal
 from PySide6.QtGui import (
@@ -26,13 +26,19 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
     QFileDialog,
+    QInputDialog,
+    QLabel,
     QMainWindow,
+    QPushButton,
     QSplitter,
     QStyle,
     QTextEdit,
-    QInputDialog,
-    QComboBox,
+    QVBoxLayout,
 )
 
 templates = [
