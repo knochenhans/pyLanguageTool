@@ -63,6 +63,12 @@ templates = [
     },
 ]
 
+error_type_color_map = {
+    "uncategorized": Qt.GlobalColor.magenta,
+    "misspelling": Qt.GlobalColor.red,
+    "style": Qt.GlobalColor.blue,
+}
+
 
 class TextDisplay(QTextEdit):
     def __init__(self):
@@ -231,7 +237,7 @@ class TextEditor(QMainWindow):
     def printError(self, cursor: QTextCursor, error: dict):
         # Get color based on error type
         error_type = error["Error"].split(" - ")[0]
-        color = QColor(self.error_type_color_map.get(error_type, Qt.GlobalColor.yellow))
+        color = QColor(error_type_color_map.get(error_type, Qt.GlobalColor.yellow))
 
         for field_name, field_value in error.items():
             if field_name == "Offset" or field_name == "Length":
@@ -308,7 +314,7 @@ class TextEditor(QMainWindow):
                 error_type = error["Error"].split(" - ")[0]
 
                 format.setUnderlineColor(
-                    self.error_type_color_map.get(error_type, Qt.GlobalColor.black)
+                    error_type_color_map.get(error_type, Qt.GlobalColor.black)
                 )
                 format.setUnderlineStyle(
                     QTextCharFormat.UnderlineStyle.SpellCheckUnderline
