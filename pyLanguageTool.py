@@ -129,6 +129,15 @@ class TextEditor(QMainWindow):
         cursor.setPosition(5)
         cursor.insertHtml("</b>")
 
+        # Load recent files from QSettings
+        recentFiles = QSettings().value("recentFiles", [])
+
+        # Check if this is a list of strings or a single string
+        if isinstance(recentFiles, str):
+            recentFiles = [recentFiles]
+
+        self.recentFiles = recentFiles
+
         openAction = QAction("Open", self)
         openAction.setShortcut("Ctrl+O")
         openAction.setStatusTip("Open File")
@@ -143,12 +152,9 @@ class TextEditor(QMainWindow):
         menubar = self.menuBar()
         fileMenu = menubar.addMenu("File")
         fileMenu.addAction(openAction)
-        fileMenu.addAction(exitAction)
 
-        fileMenu.addSeparator()
-
-        # Load recent files from QSettings
-        recentFiles = QSettings().value("recentFiles", [])
+        self.recentMenu = fileMenu.addMenu("Recent Files")
+        self.updateRecentFilesMenu()
         
         preferencesAction = QAction("Preferences", self)
         preferencesAction.triggered.connect(self.openPreferences)
