@@ -3,6 +3,8 @@ import os
 import re
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
+from collections import defaultdict
 from pathlib import Path
 
 import aspose.words as aw
@@ -374,47 +376,64 @@ class FileLoaderWorker(QThread):
         # debugpy.debug_this_thread()
         self.text_editor.statusBar().showMessage(f"Loading {self.file_name}...")
         with open(self.file_name, "r") as file:
-            if (
-                self.file_name.endswith(".docx")
-                or self.file_name.endswith(".doc")
-                or self.file_name.endswith(".rtf")
-            ):
-                file_path = None
+            extension = Path(self.file_name).suffix.lstrip(".")
+            match extension:
+                case "docx" | "doc" | "rtf":
+                    file_path = None
 
-                if self.file_name.endswith(".rtf"):
-                    # Load file as bytesio
-                    with open(self.file_name, "rb") as f:
-                        data = f.read()
+                    match extension:
+                        case "rtf":
+                            # Load file as bytesio
+                            with open(self.file_name, "rb") as f:
+                                data = f.read()
 
-                    stream = io.BytesIO(data)
-                    doc = aw.Document(stream)
+                            stream = io.BytesIO(data)
+                            doc = aw.Document(stream)
 
-                    # Save as docx
-                    stream = io.BytesIO()
-                    doc.save(stream, aw.SaveFormat.DOCX)
-                    stream.seek(0)
+                            # Save as docx
+                            stream = io.BytesIO()
+                            doc.save(stream, aw.SaveFormat.DOCX)
+                            stream.seek(0)
 
-                    file_path = stream
+                            file_path = stream
+                        case "docx" | "doc":
+                            file_path = self.file_name
 
-                elif self.file_name.endswith(".docx") or self.file_name.endswith(
-                    ".doc"
-                ):
-                    file_path = self.file_name
+                    current_template = self.text_editor.current_template
 
-                tables = self.text_editor.read_docx_tables(file_path)
+                    if current_template.get("simple", True):
+                        with docx2python(file_path) as docx_content:
+                            text = docx_content.text
+                    else:
+                        tables = self.text_editor.read_docx_tables(file_path)
 
-                text = ""
+                        text = ""
 
-                table = tables[current_template["row"]]
-                column_index = current_template["target_col_index"]
+                        table = tables[current_template["row"]]
+                        column_index = current_template["target_col_index"]
 
-                target1 = self.text_editor.extract_table_columns(table, [column_index])[
-                    0
-                ]
+                        target1 = self.text_editor.extract_table_columns(
+                            table, [column_index]
+                        )[0]
 
-                text = "\n".join(target1)
-            else:
-                text = file.read()
+                        text = "\n".join(target1)
+                case "xliff":
+                    # Parse the xliff file
+                    root = ET.parse(self.file_name).getroot()
+
+                    # source = root.findall(".//{urn:oasis:names:tc:xliff:document:1.2}source")
+                    target = root.findall(
+                        ".//{urn:oasis:names:tc:xliff:document:1.2}target"
+                    )
+
+                    text = ""
+
+                    for t in target:
+                        if t.text:
+                            text += t.text + "\n"
+
+                case _:
+                    text = file.read()
 
             self.text_editor.statusBar().showMessage(
                 f"Checking {self.file_name} with LanguageTool..."
