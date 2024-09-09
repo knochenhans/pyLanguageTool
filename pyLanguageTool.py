@@ -170,6 +170,10 @@ class TextEditor(QMainWindow):
         self.templateComboBox.currentIndexChanged.connect(self.templateChanged)
         self.toolbar.addWidget(self.templateComboBox)
 
+        # Add checkbox "Remove tags"
+        self.removeTagsCheckBox = QCheckBox("Remove tags")
+        self.toolbar.addWidget(self.removeTagsCheckBox)
+
         # Maximize the window
         # self.showMaximized()
         self.resize(1200, 800)
@@ -279,6 +283,9 @@ class TextEditor(QMainWindow):
 
         formatted_text = self.formatText(text)
         self.textDisplay.setDocument(formatted_text)
+
+        if self.removeTagsCheckBox.isChecked():
+            text = re.sub(r"<.*?>", "", text)
 
         self.addRecentFile(self.fileLoaderWorker.file_name)
         self.statusBar().showMessage("File loaded")
