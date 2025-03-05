@@ -1,12 +1,12 @@
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QInputDialog
-from colorama import Fore, Style
 
 from file_handler import FileHandler
 
 
 class FileLoaderWorker(QThread):
     fileLoaded = Signal(str)
+
     def __init__(self, text_editor, file_name: str):
         super().__init__()
         self.text_editor = text_editor
@@ -17,10 +17,6 @@ class FileLoaderWorker(QThread):
         # debugpy.debug_this_thread()
         self.text_editor.statusBar().showMessage(f"Loading {self.file_name}...")
         text = self.file_handler.load_file(self.file_name)
-        self.text_editor.statusBar().showMessage(
-            f"Checking {self.file_name} with LanguageTool..."
-        )
-        self.checkSegment(text)
         self.fileLoaded.emit(text)
 
     def select_column(self, column_names) -> int:
@@ -53,19 +49,3 @@ class FileLoaderWorker(QThread):
 
         table_index = table_names.index(table_name) + 1
         return table_index
-
-    def checkSegment(self, segment: str):
-        matches = self.text_editor.language_tool.check(segment)
-        for match in matches:
-            print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
-            error_type = f"{match.ruleIssueType} - {match.category}"
-            error = {
-                "Error": error_type,
-                "Message": match.message,
-                "Replacements": match.replacements,
-                "Context": match.context,
-                "Sentence": match.sentence,
-                "Offset": match.offset,
-                "Length": match.errorLength,
-            }
-            self.text_editor.errors[match.offset] = error

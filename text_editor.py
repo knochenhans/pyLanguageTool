@@ -1,4 +1,11 @@
-from PySide6.QtGui import QTextCursor, QTextCharFormat, QColor, QFont, QAction, QTextDocument
+from PySide6.QtGui import (
+    QTextCursor,
+    QTextCharFormat,
+    QColor,
+    QFont,
+    QAction,
+    QTextDocument,
+)
 from PySide6.QtCore import Qt, QSettings
 import language_tool_python
 import re
@@ -17,6 +24,8 @@ from PySide6.QtWidgets import (
 
 from file_loader_worker import FileLoaderWorker
 from text_display import TextDisplay
+from colorama import Fore, Style  # type: ignore
+
 
 class TextEditor(QMainWindow):
     def __init__(self) -> None:
@@ -31,8 +40,11 @@ class TextEditor(QMainWindow):
 
         self.textDisplay = TextDisplay()
         self.textDisplay.setAcceptRichText(True)
-        self.textDisplay.setReadOnly(True)
-        self.textDisplay.setStyleSheet("background-color: white;" "color: black;")
+        self.textDisplay.setStyleSheet("background-color: white; color: black;")
+        self.textDisplay.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextEditorInteraction
+            | Qt.TextInteractionFlag.TextBrowserInteraction
+        )
         self.splitter.addWidget(self.textDisplay)
 
         self.errorDisplay = QTextEdit()
@@ -54,9 +66,7 @@ class TextEditor(QMainWindow):
 
         # Check if this is a list of strings or a single string
         if isinstance(recentFiles, str):
-            recentFiles = [recentFiles]
-
-        self.recentFiles = recentFiles
+            self.recentFiles = [recentFiles]
 
         openAction = QAction("Open", self)
         openAction.setShortcut("Ctrl+O")
@@ -69,12 +79,24 @@ class TextEditor(QMainWindow):
         exitAction = QAction("Exit", self)
         exitAction.triggered.connect(self.close)
 
+        checkAction = QAction("Check Text", self)
+        checkAction.setShortcut("F5")
+        checkAction.triggered.connect(self.checkText)
+
+        clearAction = QAction("Clear Text", self)
+        clearAction.setShortcut("F6")
+        clearAction.triggered.connect(self.textDisplay.clear)
+
         menubar = self.menuBar()
         fileMenu = menubar.addMenu("File")
         fileMenu.addAction(openAction)
 
         self.recentMenu = fileMenu.addMenu("Recent Files")
         self.updateRecentFilesMenu()
+
+        fileMenu.addAction(checkAction)
+        fileMenu.addAction(clearAction)
+        fileMenu.addSeparator()
 
         preferencesAction = QAction("Preferences", self)
         preferencesAction.triggered.connect(self.openPreferences)
@@ -94,8 +116,11 @@ class TextEditor(QMainWindow):
 
         # Add template dropdown
         from pyLanguageTool import templates
+
         self.templateComboBox = QComboBox()
-        self.templateComboBox.addItems([template["name"] for template in templates])
+        self.templateComboBox.addItems(
+            [str(template["name"]) for template in templates]
+        )
         self.templateComboBox.currentIndexChanged.connect(self.templateChanged)
         self.toolbar.addWidget(self.templateComboBox)
 
@@ -119,11 +144,13 @@ class TextEditor(QMainWindow):
 
     def openPreferences(self):
         from preferences_window import PreferencesWindow
+
         preferencesWindow = PreferencesWindow(self)
         preferencesWindow.exec()
 
     def templateChanged(self, index):
         from pyLanguageTool import templates
+
         template_name = self.templateComboBox.currentText()
         template = next(
             (template for template in templates if template["name"] == template_name),
@@ -139,7 +166,30 @@ class TextEditor(QMainWindow):
 
         event.accept()
 
-    def fileLoaded(self, text: str):
+    def checkText(self):
+        self.statusBar().showMessage("Checking text with LanguageTool...")
+
+        text = self.textDisplay.toPlainText()
+
+        if self.removeTagsCheckBox.isChecked():
+            text = re.sub(r"<.*?>", "", text)
+
+        matches = self.language_tool.check(text)
+        self.errors = {}
+        for match in matches:
+            print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
+            error_type = f"{match.ruleIssueType} - {match.category}"
+            error = {
+                "Error": error_type,
+                "Message": match.message,
+                "Replacements": match.replacements,
+                "Context": match.context,
+                "Sentence": match.sentence,
+                "Offset": match.offset,
+                "Length": match.errorLength,
+            }
+            self.errors[match.offset] = error
+
         cursor = QTextCursor(self.errorDisplay.document())
 
         for error in self.errors.values():
@@ -153,8 +203,10 @@ class TextEditor(QMainWindow):
         formatted_text = self.formatText(text)
         self.textDisplay.setDocument(formatted_text)
 
-        if self.removeTagsCheckBox.isChecked():
-            text = re.sub(r"<.*?>", "", text)
+        self.statusBar().showMessage("Text checked")
+
+    def fileLoaded(self, text: str):
+        self.checkText()
 
         self.addRecentFile(self.fileLoaderWorker.file_name)
         self.statusBar().showMessage("File loaded")
@@ -163,6 +215,7 @@ class TextEditor(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
             from file_loader_worker import FileLoaderWorker
+
             self.fileLoaderWorker = FileLoaderWorker(self, file_name)
             self.fileLoaderWorker.fileLoaded.connect(self.fileLoaded)
             self.fileLoaderWorker.start()
@@ -190,9 +243,11 @@ class TextEditor(QMainWindow):
 
                 error_type = error["Error"].split(" - ")[0]
                 from pyLanguageTool import error_type_color_map
-                format.setUnderlineColor(
-                    error_type_color_map.get(error_type, Qt.GlobalColor.black)
+
+                underline_color = error_type_color_map.get(
+                    error_type, QColor(0, 0, 0, 128)  # semi-transparent black
                 )
+                format.setUnderlineColor(underline_color)
                 format.setUnderlineStyle(
                     QTextCharFormat.UnderlineStyle.SpellCheckUnderline
                 )
@@ -201,6 +256,7 @@ class TextEditor(QMainWindow):
                 )
                 format.setAnchor(True)
                 format.setAnchorHref(f"#{offset}")
+                format.setBackground(QColor(underline_color).lighter(190))
                 current_error = error
             elif current_error:
                 if offset == error["Offset"] + error["Length"]:
@@ -250,6 +306,7 @@ class TextEditor(QMainWindow):
         # Get color based on error type
         error_type = error["Error"].split(" - ")[0]
         from pyLanguageTool import error_type_color_map
+
         color = QColor(error_type_color_map.get(error_type, Qt.GlobalColor.yellow))
 
         for field_name, field_value in error.items():
