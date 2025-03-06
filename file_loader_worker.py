@@ -14,7 +14,6 @@ class FileLoaderWorker(QThread):
         self.file_handler = FileHandler(text_editor)
 
     def run(self):
-        # debugpy.debug_this_thread()
         self.text_editor.statusBar().showMessage(f"Loading {self.file_name}...")
         text = self.file_handler.load_file(self.file_name)
         self.fileLoaded.emit(text)

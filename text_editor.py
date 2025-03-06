@@ -206,6 +206,7 @@ class TextEditor(QMainWindow):
         self.statusBar().showMessage("Text checked")
 
     def fileLoaded(self, text: str):
+        self.textDisplay.setPlainText(text)
         self.checkText()
 
         self.addRecentFile(self.fileLoaderWorker.file_name)
