@@ -1,30 +1,29 @@
+import re
+from typing import Any, Dict
+
+import language_tool_python  # type: ignore
+from colorama import Fore, Style  # type: ignore
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import (
-    QTextCursor,
-    QTextCharFormat,
+    QAction,
     QColor,
     QFont,
-    QAction,
+    QTextCharFormat,
+    QTextCursor,
     QTextDocument,
 )
-from PySide6.QtCore import Qt, QSettings
-import language_tool_python
-import re
-
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
     QMainWindow,
     QSplitter,
-    QTextEdit,
     QStyle,
-    QMenuBar,
-    QComboBox,
-    QCheckBox,
-    QFileDialog,
-    QToolBar,
+    QTextEdit,
 )
 
 from file_loader_worker import FileLoaderWorker
 from text_display import TextDisplay
-from colorama import Fore, Style  # type: ignore
 
 
 class TextEditor(QMainWindow):
@@ -128,6 +127,19 @@ class TextEditor(QMainWindow):
         self.removeTagsCheckBox = QCheckBox("Remove tags")
         self.toolbar.addWidget(self.removeTagsCheckBox)
 
+        # Add language selection dropdown
+        self.languageComboBox = QComboBox()
+        self.language_codes = {
+            "German (de-DE)": "de-DE",
+            "English (en-US)": "en-US",
+            "English (en-GB)": "en-GB",
+            "French (fr-FR)": "fr-FR",
+            "Spanish (es-ES)": "es-ES",
+        }
+        self.languageComboBox.addItems(list(self.language_codes.keys()))
+        self.languageComboBox.setCurrentText("German (de-DE)")
+        self.toolbar.addWidget(self.languageComboBox)
+
         # Maximize the window
         # self.showMaximized()
         self.resize(1200, 800)
@@ -136,19 +148,22 @@ class TextEditor(QMainWindow):
 
         self.show()
 
-        self.language_tool = language_tool_python.LanguageTool("de-DE")
+        # Initialize with default language
+        self.language_tool = language_tool_python.LanguageTool(
+            self.language_codes[self.languageComboBox.currentText()]
+        )
 
-        self.errors: dict = {}
+        self.errors: Dict[int, Dict[str, Any]] = {}
 
         self.current_template = templates[0]
 
-    def openPreferences(self):
+    def openPreferences(self) -> None:
         from preferences_window import PreferencesWindow
 
         preferencesWindow = PreferencesWindow(self)
         preferencesWindow.exec()
 
-    def templateChanged(self, index):
+    def templateChanged(self, index: int) -> None:
         from pyLanguageTool import templates
 
         template_name = self.templateComboBox.currentText()
@@ -159,15 +174,19 @@ class TextEditor(QMainWindow):
         if template:
             self.current_template = template
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
         self.saveWindowPosition()
 
         QSettings().setValue("recentFiles", self.recentFiles)
 
         event.accept()
 
-    def checkText(self):
+    def checkText(self) -> None:
         self.statusBar().showMessage("Checking text with LanguageTool...")
+
+        # Get selected language and re-initialize language_tool
+        selected_language = self.language_codes[self.languageComboBox.currentText()]
+        self.language_tool = language_tool_python.LanguageTool(selected_language)
 
         text = self.textDisplay.toPlainText()
 
@@ -179,7 +198,7 @@ class TextEditor(QMainWindow):
         for match in matches:
             print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
             error_type = f"{match.ruleIssueType} - {match.category}"
-            error = {
+            error: Dict[str, Any] = {
                 "Error": error_type,
                 "Message": match.message,
                 "Replacements": match.replacements,
@@ -205,14 +224,14 @@ class TextEditor(QMainWindow):
 
         self.statusBar().showMessage("Text checked")
 
-    def fileLoaded(self, text: str):
+    def fileLoaded(self, text: str) -> None:
         self.textDisplay.setPlainText(text)
         self.checkText()
 
         self.addRecentFile(self.fileLoaderWorker.file_name)
         self.statusBar().showMessage("File loaded")
 
-    def openFile(self):
+    def openFile(self) -> None:
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
             from file_loader_worker import FileLoaderWorker
@@ -221,7 +240,7 @@ class TextEditor(QMainWindow):
             self.fileLoaderWorker.fileLoaded.connect(self.fileLoaded)
             self.fileLoaderWorker.start()
 
-    def formatText(self, text):
+    def formatText(self, text: str) -> QTextDocument:
         document = QTextDocument()
         cursor = QTextCursor(document)
 
@@ -267,20 +286,20 @@ class TextEditor(QMainWindow):
             cursor.insertText(character, format)
         return document
 
-    def addRecentFile(self, file_name):
+    def addRecentFile(self, file_name: str) -> None:
         if file_name in self.recentFiles:
             self.recentFiles.remove(file_name)
         self.recentFiles.insert(0, file_name)
         self.updateRecentFilesMenu()
 
-    def openRecentFile(self, file_name):
+    def openRecentFile(self, file_name: str) -> None:
         if file_name:
             self.fileLoaderWorker = FileLoaderWorker(self, file_name)
             self.fileLoaderWorker.fileLoaded.connect(self.fileLoaded)
             self.fileLoaderWorker.start()
         self.addRecentFile(file_name)
 
-    def updateRecentFilesMenu(self):
+    def updateRecentFilesMenu(self) -> None:
         self.recentMenu.clear()
         for i, fileName in enumerate(self.recentFiles):
             action = QAction(f"{i+1}: {fileName}", self)
@@ -296,14 +315,14 @@ class TextEditor(QMainWindow):
         settings.setValue("window/size", self.size())
         settings.setValue("recentFiles", self.recentFiles)
 
-    def loadWindowPosition(self):
+    def loadWindowPosition(self) -> None:
         settings = QSettings()
         pos = settings.value("window/position", self.pos())
         size = settings.value("window/size", self.size())
         self.move(pos)
         self.resize(size)
 
-    def printError(self, cursor: QTextCursor, error: dict):
+    def printError(self, cursor: QTextCursor, error: Dict[str, Any]) -> None:
         # Get color based on error type
         error_type = error["Error"].split(" - ")[0]
         from pyLanguageTool import error_type_color_map

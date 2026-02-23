@@ -1,18 +1,21 @@
 import io
+import xml.etree.ElementTree as ET
 from pathlib import Path
-from docx import Document
-from docx2python import docx2python
-from colorama import Fore, Style
+from typing import List
 
 import aspose.words as aw
-import xml.etree.ElementTree as ET
+from colorama import Fore, Style
+from docx import Document
+from docx2python import docx2python
 
 
 class FileHandler:
-    def __init__(self, text_editor):
+    from text_editor import TextEditor
+
+    def __init__(self, text_editor: TextEditor) -> None:
         self.text_editor = text_editor
 
-    def read_docx_tables(self, file_path):
+    def read_docx_tables(self, file_path: str):
         """
         Reads all the tables in a docx file and returns them as a list.
         """
@@ -21,7 +24,9 @@ class FileHandler:
 
         return tables
 
-    def extract_table_columns(self, table, columns, num_rows=-1):
+    def extract_table_columns(
+        self, table, columns: list[int], num_rows: int = -1
+    ) -> List[List[str]]:
         """
         Extracts the contents of the specified columns of a table up to a specified number of rows.
         """
@@ -42,7 +47,7 @@ class FileHandler:
                 )
         return extracted_columns
 
-    def load_file(self, file_name):
+    def load_file(self, file_name: str) -> str:
         with open(file_name, "r") as file:
             extension = Path(file_name).suffix.lstrip(".")
             match extension:

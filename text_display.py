@@ -1,19 +1,20 @@
-from PySide6.QtWidgets import QTextEdit, QApplication
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication, QTextEdit
 
 
 class TextDisplay(QTextEdit):
     def __init__(self):
         super().__init__()
 
-    def mouseMoveEvent(self, e):
+    def mouseMoveEvent(self, e: QMouseEvent):
         self.anchor = self.anchorAt(e.position().toPoint())
         if self.anchor:
             QApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
         else:
             QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
 
-    def mousePressEvent(self, e):
+    def mousePressEvent(self, e: QMouseEvent):
         self.anchor = self.anchorAt(e.position().toPoint())
 
         if self.anchor:
@@ -22,7 +23,7 @@ class TextDisplay(QTextEdit):
         # if self.anchor:
         #     QApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
 
-    def mouseReleaseEvent(self, e):
+    def mouseReleaseEvent(self, e: QMouseEvent):
         # if self.anchor:
         # QDesktopServices.openUrl(QUrl(self.anchor))
         # QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)

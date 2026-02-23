@@ -1,8 +1,6 @@
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QInputDialog
 
-from file_handler import FileHandler
-
 
 class FileLoaderWorker(QThread):
     fileLoaded = Signal(str)
@@ -11,6 +9,9 @@ class FileLoaderWorker(QThread):
         super().__init__()
         self.text_editor = text_editor
         self.file_name = file_name
+
+        from file_handler import FileHandler
+
         self.file_handler = FileHandler(text_editor)
 
     def run(self):

@@ -1,13 +1,13 @@
 import os
 import sys
+from typing import Any, Dict, List
 
 from PySide6.QtCore import QSettings, Qt
-
 from PySide6.QtWidgets import (
     QApplication,
 )
 
-templates = [
+templates: List[Dict[str, Any]] = [
     {
         "name": "Smartcat",
         "simple": False,
