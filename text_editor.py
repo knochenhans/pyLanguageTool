@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 import language_tool_python  # type: ignore
 from colorama import Fore, Style  # type: ignore
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -37,23 +37,27 @@ class TextEditor(QMainWindow):
         self.splitter.setOrientation(Qt.Orientation.Horizontal)
         self.setCentralWidget(self.splitter)
 
-        self.textDisplay = TextDisplay()
-        self.textDisplay.setAcceptRichText(True)
-        self.textDisplay.setStyleSheet("background-color: white; color: black;")
-        self.textDisplay.setTextInteractionFlags(
+        self.text_display = TextDisplay()
+        self.text_display.setAcceptRichText(True)
+        self.text_display.setStyleSheet("background-color: white; color: black;")
+        self.text_display.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextEditorInteraction
-            | Qt.TextInteractionFlag.TextBrowserInteraction
         )
-        self.splitter.addWidget(self.textDisplay)
+        self.splitter.addWidget(self.text_display)
+        # allow handling clicks / Escape to clear selection
+        self.text_display.installEventFilter(self)
+        # track mouse press to distinguish click vs drag
+        self._mouse_press_pos = None
+        self._mouse_moved = False
 
-        self.errorDisplay = QTextEdit()
-        self.errorDisplay.setAcceptRichText(True)
-        self.errorDisplay.setReadOnly(True)
-        self.splitter.addWidget(self.errorDisplay)
+        self.error_display = QTextEdit()
+        self.error_display.setAcceptRichText(True)
+        self.error_display.setReadOnly(True)
+        self.splitter.addWidget(self.error_display)
 
-        self.errorDisplay.setText("Errors will be displayed here.")
+        self.error_display.setText("Errors will be displayed here.")
 
-        cursor = QTextCursor(self.errorDisplay.document())
+        cursor = QTextCursor(self.error_display.document())
         cursor.setPosition(0)
         cursor.insertHtml("<b>")
         # cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 5)
@@ -61,48 +65,58 @@ class TextEditor(QMainWindow):
         cursor.insertHtml("</b>")
 
         # Load recent files from QSettings
-        recentFiles = QSettings().value("recentFiles", [])
+        recent_files = QSettings().value("recentFiles", [])
 
         # Check if this is a list of strings or a single string
-        if isinstance(recentFiles, str):
-            self.recentFiles = [recentFiles]
+        if isinstance(recent_files, str):
+            self.recentFiles = [recent_files]
 
-        openAction = QAction("Open", self)
-        openAction.setShortcut("Ctrl+O")
-        openAction.setStatusTip("Open File")
-        openAction.setIcon(
+        open_action = QAction("Open", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.setStatusTip("Open File")
+        open_action.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
         )
-        openAction.triggered.connect(self.openFile)
+        open_action.triggered.connect(self.openFile)
 
-        exitAction = QAction("Exit", self)
-        exitAction.triggered.connect(self.close)
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.close)
 
-        checkAction = QAction("Check Text", self)
-        checkAction.setShortcut("F5")
-        checkAction.triggered.connect(self.checkText)
+        check_action = QAction("Check Text", self)
+        check_action.setShortcut("F5")
+        check_action.triggered.connect(self.checkText)
 
-        clearAction = QAction("Clear Text", self)
-        clearAction.setShortcut("F6")
-        clearAction.triggered.connect(self.textDisplay.clear)
+        clear_action = QAction("Clear Text", self)
+        clear_action.setShortcut("F6")
+        clear_action.triggered.connect(self.text_display.clear)
+
+        open_latest_recent_file_action = QAction("Open Latest Recent File", self)
+        open_latest_recent_file_action.triggered.connect(self.open_latest_recent_file)
+        open_latest_recent_file_action.setStatusTip("Open the latest recent file")
+        open_latest_recent_file_action.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
+        )
+        open_latest_recent_file_action.setShortcut("Ctrl+Shift+O")
+        self.addAction(open_latest_recent_file_action)
 
         menubar = self.menuBar()
-        fileMenu = menubar.addMenu("File")
-        fileMenu.addAction(openAction)
+        file_menu = menubar.addMenu("File")
+        file_menu.addAction(open_action)
+        file_menu.addAction(open_latest_recent_file_action)
 
-        self.recentMenu = fileMenu.addMenu("Recent Files")
+        self.recentMenu = file_menu.addMenu("Recent Files")
         self.updateRecentFilesMenu()
 
-        fileMenu.addAction(checkAction)
-        fileMenu.addAction(clearAction)
-        fileMenu.addSeparator()
+        file_menu.addAction(check_action)
+        file_menu.addAction(clear_action)
+        file_menu.addSeparator()
 
-        preferencesAction = QAction("Preferences", self)
-        preferencesAction.triggered.connect(self.openPreferences)
+        preferences_action = QAction("Preferences", self)
+        preferences_action.triggered.connect(self.openPreferences)
 
-        fileMenu.addAction(preferencesAction)
-        fileMenu.addSeparator()
-        fileMenu.addAction(exitAction)
+        file_menu.addAction(preferences_action)
+        file_menu.addSeparator()
+        file_menu.addAction(exit_action)
 
         self.setWindowTitle("pyLanguageTool")
 
@@ -111,24 +125,24 @@ class TextEditor(QMainWindow):
         # Add an icon bar
         self.toolbar = self.addToolBar("Toolbar")
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
-        self.toolbar.addAction(openAction)
+        self.toolbar.addAction(open_action)
 
         # Add template dropdown
         from pyLanguageTool import templates
 
-        self.templateComboBox = QComboBox()
-        self.templateComboBox.addItems(
+        self.template_combo_box = QComboBox()
+        self.template_combo_box.addItems(
             [str(template["name"]) for template in templates]
         )
-        self.templateComboBox.currentIndexChanged.connect(self.templateChanged)
-        self.toolbar.addWidget(self.templateComboBox)
+        self.template_combo_box.currentIndexChanged.connect(self.templateChanged)
+        self.toolbar.addWidget(self.template_combo_box)
 
         # Add checkbox "Remove tags"
-        self.removeTagsCheckBox = QCheckBox("Remove tags")
-        self.toolbar.addWidget(self.removeTagsCheckBox)
+        self.remove_tags_check_box = QCheckBox("Remove tags")
+        self.toolbar.addWidget(self.remove_tags_check_box)
 
         # Add language selection dropdown
-        self.languageComboBox = QComboBox()
+        self.language_combo_box = QComboBox()
         self.language_codes = {
             "German (de-DE)": "de-DE",
             "English (en-US)": "en-US",
@@ -136,9 +150,9 @@ class TextEditor(QMainWindow):
             "French (fr-FR)": "fr-FR",
             "Spanish (es-ES)": "es-ES",
         }
-        self.languageComboBox.addItems(list(self.language_codes.keys()))
-        self.languageComboBox.setCurrentText("German (de-DE)")
-        self.toolbar.addWidget(self.languageComboBox)
+        self.language_combo_box.addItems(list(self.language_codes.keys()))
+        self.language_combo_box.setCurrentText("German (de-DE)")
+        self.toolbar.addWidget(self.language_combo_box)
 
         # Maximize the window
         # self.showMaximized()
@@ -150,7 +164,7 @@ class TextEditor(QMainWindow):
 
         # Initialize with default language
         self.language_tool = language_tool_python.LanguageTool(
-            self.language_codes[self.languageComboBox.currentText()]
+            self.language_codes[self.language_combo_box.currentText()]
         )
 
         self.errors: Dict[int, Dict[str, Any]] = {}
@@ -166,7 +180,7 @@ class TextEditor(QMainWindow):
     def templateChanged(self, index: int) -> None:
         from pyLanguageTool import templates
 
-        template_name = self.templateComboBox.currentText()
+        template_name = self.template_combo_box.currentText()
         template = next(
             (template for template in templates if template["name"] == template_name),
             None,
@@ -185,19 +199,19 @@ class TextEditor(QMainWindow):
         self.statusBar().showMessage("Checking text with LanguageTool...")
 
         # Get selected language and re-initialize language_tool
-        selected_language = self.language_codes[self.languageComboBox.currentText()]
+        selected_language = self.language_codes[self.language_combo_box.currentText()]
         self.language_tool = language_tool_python.LanguageTool(selected_language)
 
-        text = self.textDisplay.toPlainText()
+        text = self.text_display.toPlainText()
 
-        if self.removeTagsCheckBox.isChecked():
+        if self.remove_tags_check_box.isChecked():
             text = re.sub(r"<.*?>", "", text)
 
         matches = self.language_tool.check(text)
         self.errors = {}
         for match in matches:
             print(f"{Fore.RED}Error: {match.message}{Style.RESET_ALL}")
-            error_type = f"{match.ruleIssueType} - {match.category}"
+            error_type = f"{match.rule_issue_type} - {match.category}"
             error: Dict[str, Any] = {
                 "Error": error_type,
                 "Message": match.message,
@@ -205,11 +219,11 @@ class TextEditor(QMainWindow):
                 "Context": match.context,
                 "Sentence": match.sentence,
                 "Offset": match.offset,
-                "Length": match.errorLength,
+                "Length": match.error_length,
             }
             self.errors[match.offset] = error
 
-        cursor = QTextCursor(self.errorDisplay.document())
+        cursor = QTextCursor(self.error_display.document())
 
         for error in self.errors.values():
             self.printError(cursor, error)
@@ -220,12 +234,12 @@ class TextEditor(QMainWindow):
         cursor.insertText("\n")
 
         formatted_text = self.formatText(text)
-        self.textDisplay.setDocument(formatted_text)
+        self.text_display.setDocument(formatted_text)
 
         self.statusBar().showMessage("Text checked")
 
     def fileLoaded(self, text: str) -> None:
-        self.textDisplay.setPlainText(text)
+        self.text_display.setPlainText(text)
         self.checkText()
 
         self.addRecentFile(self.fileLoaderWorker.file_name)
@@ -355,3 +369,67 @@ class TextEditor(QMainWindow):
             # format.setForeground(Qt.GlobalColor.black)
 
             cursor.insertText(f"{field_value}\n", format)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]
+        # Only handle events for the text display
+        if obj is self.text_display:
+            if event.type() == QEvent.MouseButtonPress:
+                # record press position, don't change cursor (preserve drag selection)
+                try:
+                    self._mouse_press_pos = event.pos()
+                    self._mouse_moved = False
+                except Exception:
+                    self._mouse_press_pos = None
+                return False
+            if event.type() == QEvent.MouseMove:
+                # mark moved if user is dragging
+                try:
+                    if self._mouse_press_pos is not None:
+                        if (event.pos() - self._mouse_press_pos).manhattanLength() > 4:
+                            self._mouse_moved = True
+                except Exception:
+                    pass
+                return False
+            if event.type() == QEvent.MouseButtonRelease:
+                # if it was a simple click (no drag) clear selection
+                try:
+                    if self._mouse_press_pos is not None and not self._mouse_moved:
+                        cursor = self.text_display.textCursor()
+                        if cursor.hasSelection():
+                            cursor.clearSelection()
+                            self.text_display.setTextCursor(cursor)
+                            # consume the release so no further toggling happens
+                            return True
+                except Exception:
+                    pass
+                finally:
+                    self._mouse_press_pos = None
+                    self._mouse_moved = False
+                return False
+            if event.type() == QEvent.KeyPress:
+                if getattr(event, "key", lambda: None)() == Qt.Key.Key_Escape:
+                    cursor = self.text_display.textCursor()
+                    if cursor.hasSelection():
+                        cursor.clearSelection()
+                        self.text_display.setTextCursor(cursor)
+                        return True
+        return super().eventFilter(obj, event)
+
+    def open_latest_recent_file(self) -> None:
+        # Load first recent file from Linux desktop if available using Gtk.RecentlyUsed API
+        try:
+            import gi
+
+            gi.require_version("Gtk", "3.0")
+            from gi.repository import Gtk
+
+            recently_used = Gtk.RecentManager.get_default()
+            items = recently_used.get_items()
+            if items:
+                first_item = items[0]
+                file_path = first_item.get_uri()
+                if file_path.startswith("file://"):
+                    file_path = file_path[7:]
+                self.openRecentFile(file_path)
+        except Exception as e:
+            print(f"Error loading recent file from desktop: {e}")
